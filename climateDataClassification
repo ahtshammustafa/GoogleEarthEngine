@@ -1,0 +1,66 @@
+// Define the region of interest (ROI).
+var roi = roi;
+
+Map.centerObject(roi);
+
+// Load and filter ERA5-Land data.
+var climateData = ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR")
+  .filterDate('2000-01-01', '2020-12-31')
+  .select(['temperature_2m', 'total_precipitation_sum'])
+  .toBands();
+
+// Sample climate data and apply k-means clustering.
+var sample = climateData.sample({
+  region: roi, scale: 10000, numPixels: 100
+});
+
+var model = ee.Clusterer.wekaKMeans(4).train(sample);
+var climateMap = climateData.cluster(model).rename('climate_map');
+
+Map.addLayer(climateMap.clip(roi), {min: 0, max: 3}, 'Climate Map', false);
+
+// Export climate map to Google Drive.
+Export.image.toDrive({
+  image: climateMap, 
+  description: 'climate_map', 
+  scale: 10000, 
+  region: roi, 
+  crs: 'EPSG:4326', 
+  folder: 'test'
+});
+
+// Calculate area in square kilometers for each cluster.
+var areaImage = ee.Image.pixelArea().divide(1e6).addBands(climateMap);
+print(ui.Chart.image.byClass({
+  image: areaImage, classBand: 'climate_map', region: roi, 
+  reducer: ee.Reducer.sum(), scale: 10000
+}));
+
+// Calculate mean temperature and add climate map as a band.
+var avgTemperature = ee.ImageCollection("ECMWF/ERA5_LAND/MONTHLY_AGGR")
+  .filterDate('2000-01-01', '2020-12-31')
+  .select('temperature_2m')
+  .mean()
+  .subtract(273.15);
+var temperatureMap = avgTemperature.addBands(climateMap);
+
+// Compute min and max temperature stats for each cluster.
+var tempStats = temperatureMap.reduceRegion({
+  reducer: ee.Reducer.minMax().group({groupField: 1}), 
+  geometry: roi, scale: 10000
+});
+print('Temperature Stats:', tempStats);
+
+// Filter and calculate NDVI time series for cluster 3.
+var ndviSeries = ee.ImageCollection("MODIS/061/MOD13A1")
+  .filterDate('2002-01-01', '2020-12-31')
+  .map(function(img) {
+    var ndvi = img.select('NDVI').multiply(0.0001);
+    return ndvi.updateMask(climateMap.eq(3))
+               .copyProperties(img, img.propertyNames());
+  });
+
+print(ui.Chart.image.series({
+  imageCollection: ndviSeries, region: roi, reducer: ee.Reducer.mean(), 
+  scale: 10000, xProperty: 'system:time_start'
+}));
