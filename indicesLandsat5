@@ -1,0 +1,78 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var roi = ee.FeatureCollection("projects/ee-ahtshamm214/assets/tehsilMzdBoundary");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Load Landsat 8 Collection 2 Level 1 imagery
+var collection = ee.ImageCollection("LANDSAT/LT05/C02/T1_TOA")
+  .filterBounds(roi)
+  .filterDate('2002-05-01', '2003-07-31') // Fix the typo in the date
+  .filter(ee.Filter.calendarRange(5, 7, 'month'))
+  .filterMetadata('CLOUD_COVER', 'less_than', 5)
+// print(collection);  
+  .median()
+  .clip(roi);
+
+
+// Calculate median composite
+var image = collection;
+
+// Add the image to the map
+Map.centerObject(roi, 10);
+Map.addLayer(image, { bands: ['B4', 'B3', 'B2'], min: 0, max: 0.3 }, 'Image');
+
+// Band Map
+var bandMap = {
+  RED: image.select('B3'),
+  GREEN: image.select('B2'),
+  BLUE: image.select('B1'),
+  NIR: image.select('B4'),
+  SWIR1: image.select('B5'),
+  SWIR2: image.select('B7'),
+};
+
+// Calculate Normalized Difference Vegetation Index
+var ndvi = image.expression('(NIR - RED) / (NIR + RED)', bandMap).rename('NDVI');
+Map.addLayer(ndvi, { min: -1, max: 1, palette: ['blue', 'white', 'green']}, 'NDVI');
+
+// Calculate Enhanced Vegetation Index
+var evi = image.expression('(2.5 * (NIR - RED)) / (NIR + 6 * RED - 7 * BLUE + 1)', bandMap).rename('EVI');
+Map.addLayer(evi, { min: -1, max: 1, palette: ['blue', 'white', 'green']}, 'EVI');
+
+// Calculate Normalized Difference Water Index
+var ndwi = image.expression('(GREEN - SWIR1) / (GREEN + SWIR1)', bandMap).rename('NDWI');
+Map.addLayer(ndwi, { min: -1, max: 1, palette: ['red', 'white', 'blue']}, 'NDWI');
+
+// Calculate Normalized Difference Built-up Index
+var ndbi = image.expression('(SWIR1 - NIR) / (SWIR1 + NIR)', bandMap).rename('NDBI');
+Map.addLayer(ndbi, { min: -1, max: 1, palette: ['blue', 'white', 'red']}, 'NDBI');
+
+// Calculate Enhance Mangrove Vegetation Index
+var mvi = image.expression('(GREEN - SWIR2) / (SWIR1 - GREEN)', bandMap).rename('EMVI');
+Map.addLayer(mvi, { min: -1, max: 1, palette: ['blue', 'white', 'green']}, 'EMVI');
+
+// Calculate Bare Area Index
+var bai = image.expression('(SWIR1 + RED) - (NIR + BLUE) / (SWIR1 + RED) + (NIR + BLUE)', bandMap).rename('BAI');
+Map.addLayer(bai, { min: -1, max: 1, palette: ['green', 'yellow', 'red']}, 'BAI');
+
+// List of index names and corresponding layers
+var indices = [
+  { name: 'NDVI', layer: ndvi },
+  { name: 'EVI', layer: evi },
+  { name: 'NDWI', layer: ndwi },
+  { name: 'NDBI', layer: ndbi },
+  { name: 'EMVI', layer: mvi },
+  { name: 'BAI', layer: bai }
+];
+
+// Loop through the indices and export images
+for (var i = 0; i < indices.length; i++) {
+  var index = indices[i];
+
+  // Export image
+  Export.image.toDrive({
+    image: index.layer.toFloat(),
+    description: index.name,
+    scale: 30,
+    region: roi,
+    maxPixels: 1e13
+  });
+}

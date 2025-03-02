@@ -1,0 +1,89 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var l9 = ee.ImageCollection("LANDSAT/LC09/C02/T1_L2"),
+    roi = ee.FeatureCollection("projects/ee-ahtshamm214/assets/tehsilMzdBoundary");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Mapping urban density using spectral indices + convolution
+Map.centerObject(roi, 11);
+// Date to filter
+var start = '2023-01-01';
+var end = '2023-12-31';
+
+// Create a cloud less composite
+// Function to cloud mask
+function cloudMask(image){
+  var qa = image.select('QA_PIXEL');
+  var dilated = 1 << 1;
+  var cirrus = 1 << 2;
+  var cloud = 1 << 3;
+  var shadow = 1 << 4;
+  var mask = qa.bitwiseAnd(dilated).eq(0)
+    .and(qa.bitwiseAnd(cloud).eq(0))
+    .and(qa.bitwiseAnd(cirrus).eq(0))
+    .and(qa.bitwiseAnd(shadow).eq(0));
+  return image.updateMask(mask)
+    .select(['SR_B.*'], ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7']) // Select only important bands
+    .multiply(0.0000275).add(-0.2); // Scale image to 0 - 1  
+}
+
+// Composite an image
+var image = l9.filterDate(start, end)
+  .filterBounds(roi)
+  .map(cloudMask) // Apply cloud mask function
+  .median()
+  .clip(roi); // Clip to study area
+
+// Show the image
+Map.addLayer(image, { min: [0.1, 0.05, 0.025], max: [0.4, 0.3, 0.25], bands: ['B5', 'B6', 'B7'] }, 'Image');
+
+// Generate some spectral indices
+// Bandmap
+var bandMap = {
+  RED: image.select('B4'),
+  NIR: image.select('B5'),
+  SWIR1: image.select('B6'),
+  SWIR2: image.select('B7')
+};
+
+// Generate NDBI and NBR2
+var ndbi = image.expression('NDBI = (SWIR1 - NIR) / (SWIR1 + NIR)', bandMap);
+Map.addLayer(ndbi, { min: -1, max: 1, palette: ['blue', 'white', 'red'] }, 'NDBI');
+
+var nbr2 = image.expression('NBR2 = (SWIR1 - SWIR2) / (SWIR1 + SWIR2)', bandMap);
+Map.addLayer(nbr2, { min: -1, max: 1, palette: ['blue', 'white', 'red'] }, 'NBR2');
+
+// Generate built-up area
+var built = ndbi.gte(-0.1).and(nbr2.lte(0.2));
+Map.addLayer(built.selfMask(), { palette: 'red' }, 'Built-up');
+
+// Calculate Normalized Difference Vegetation Index
+var ndvi = image.expression('(NIR - RED) / (NIR + RED)', bandMap).rename('NDVI');
+Map.addLayer(ndvi, { min: -1, max: 1, palette: ['blue', 'white', 'green']}, 'NDVI');
+
+// Mapping urban density using convolution
+var urbanDensity = built.focalMean(3) // using 3 pixel neighbour as input
+  .reproject('EPSG:4326', null, 30); // reproject to 30 meter pixel again
+Map.addLayer(urbanDensity, { min: 0, max: 1, palette: ['black', 'purple', 'blue', 'cyan', 'green', 'yellow', 'red'] }, 'Urban density');
+
+
+
+// List of index names and corresponding layers
+var indices = [
+  { name: 'image2022', layer: image },
+  { name: 'NDBI2022', layer: ndbi },
+  { name: 'Built-up2022', layer: built },
+  { name: 'Urbandensity2022', layer: urbanDensity },
+];
+
+// Loop through the indices and export images
+for (var i = 0; i < indices.length; i++) {
+  var index = indices[i];
+  
+  // Export image
+  Export.image.toDrive({
+    image: index.layer.toFloat(), // Convert to float to avoid precision issues
+    description: index.name,
+    scale: 30, // Adjust the scale as needed
+    region: roi,
+    maxPixels: 1e13 // Adjust as needed
+  });
+}

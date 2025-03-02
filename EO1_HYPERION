@@ -1,0 +1,27 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var aoi = ee.FeatureCollection("projects/ee-ahtshamm214/assets/SampleLoc"),
+    roi = 
+    /* color: #d63000 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[64.35756853245448, 29.931817082278002],
+          [64.35756853245448, 29.066461015731228],
+          [65.42873552464198, 29.066461015731228],
+          [65.42873552464198, 29.931817082278002]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var dataset = ee.ImageCollection('EO1/HYPERION')
+                  .filter(ee.Filter.date('2016-01-01', '2017-03-01'))
+var rgb = dataset.select(['B050', 'B023', 'B015']);
+var rgbVis = {
+  min: 1000.0,
+  max: 14000.0,
+  gamma: 2.5,
+};
+Map.setCenter(162.0044, -77.3463, 9);
+Map.addLayer(rgb.median(), rgbVis, 'RGB');
+Map.addLayer(roi, {}, 'ROI');
+Map.centerObject(roi, 10)

@@ -1,0 +1,52 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var badswat = 
+    /* color: #d63000 */
+    /* shown: false */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[73.93887233057694, 36.62234667619964],
+          [73.93887233057694, 36.477273479272625],
+          [74.14829921045975, 36.477273479272625],
+          [74.14829921045975, 36.62234667619964]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Define the date range and cloud cover threshold
+var startDate = '2022-04-01';
+var endDate = '2022-08-31';
+var cloudCoverThreshold = 5;
+
+// Define the region of interest (ROI) as a geometry (e.g., a bounding box)
+var roi = badswat/* Define your region of interest geometry here */;
+
+// Load Sentinel 2A Collection
+var sentinelCollection = ee.ImageCollection('COPERNICUS/S2')
+  .filterBounds(roi)
+  .filterDate(startDate, endDate)
+  .filter(ee.Filter.calendarRange(5, 8, 'month'))
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloudCoverThreshold))
+  .median()
+  .clip(roi);
+print(sentinelCollection);
+
+// Define visualization parameters for Sentinel image
+var visParamsTrue = {
+  bands: ['B4', 'B3', 'B2'],
+  min: 0,
+  max: 8000,
+};
+
+// Add Sentinel image to the map
+Map.addLayer(sentinelCollection, visParamsTrue, "Sentinel Image");
+
+
+// Export classified map to Google Drive
+Export.image.toDrive({
+  image: sentinelCollection,
+  description: 'Badswat',
+  scale: 10,
+  region: badswat,
+  maxPixels: 1e13,
+});

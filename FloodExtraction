@@ -1,0 +1,44 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var roi = ee.FeatureCollection("projects/ee-ahtshamm214/assets/National_Boundary");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.centerObject(roi, 6)
+// Loading Image Collection - Sentinel 1 SAR GRD 
+var collection = ee.ImageCollection("COPERNICUS/S1_GRD")
+.filterBounds(roi)
+.filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
+.select('VV');
+
+// Filter Before and after flood imagery 
+var before = collection.filterDate('2022-05-1', '2022-05-30').mosaic()
+var after = collection.filterDate('2022-08-01', '2022-08-30').mosaic()
+
+// Extracting AOI
+var beforeClip = before.clip(roi) 
+var afterClip = after.clip(roi)
+
+// Apply somoothening filter 
+var beforeS = beforeClip.focal_median(30, 'circle', 'meters')
+var afterS = afterClip.focal_median(30, 'circle', 'meters')
+
+// Creating difference images 
+var difference = afterS.subtract(beforeS);
+
+// Difference -3 
+var floodExtent = difference.lt(-3)
+var flood = floodExtent.updateMask(floodExtent)
+
+// Displaying results 
+Map.addLayer(beforeClip, {min: -30, max: 0}, 'Before Flood')
+Map.addLayer(afterClip, {min: -30, max: 0}, 'After Flood')
+Map.addLayer(difference, {}, 'Difference')
+Map.addLayer(flood, {}, 'Flood Extent')
+
+// Export to drive
+Export.image.toDrive({
+  image: flood.float(),
+  description: 'PakistanFloodMap',
+  scale: 10,
+  maxPixels: 1e13,
+  region: roi,
+  crs: 'EPSG :4326'
+});

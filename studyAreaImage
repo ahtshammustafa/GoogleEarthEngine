@@ -1,0 +1,52 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var roi = ee.FeatureCollection("projects/ee-ahtshamm214/assets/SampleLoc"),
+    Region = 
+    /* color: #98ff00 */
+    /* displayProperties: [
+      {
+        "type": "rectangle"
+      }
+    ] */
+    ee.Geometry.Polygon(
+        [[[67.76291301725816, 31.504299774421305],
+          [67.76291301725816, 31.428162308599386],
+          [67.85183361051988, 31.428162308599386],
+          [67.85183361051988, 31.504299774421305]]], null, false);
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.addLayer(gaul2, {}, 'Adm_02');
+Map.addLayer(roi, {}, 'ROI');
+Map.addLayer(Region, {}, 'Region');
+
+
+// // Load Sentinel 2A image
+var image = ee.ImageCollection('COPERNICUS/S2_SR')
+.filterDate('2022-01-01', '2022-12-30')
+.filter(ee.Filter.calendarRange(5, 7, 'month'))
+// Pre-filter to get less cloudy granules.
+.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 5))
+.filterBounds(Region)
+.median()
+.clip(Region);
+print(image);
+var visParamsTrue = {bands: ['B4', 'B3', 'B2'], min: 1679.75, max: 4571.75, gamma: 1.1};
+Map.addLayer(image, visParamsTrue, "Sentinel 2022");
+Map.centerObject(roi, 11);
+
+
+
+// // Center the map on the region of interest
+// Map.centerObject(roi, 11);
+
+// // // Export classified map to Google Drive
+// Export.image.toDrive({
+//   image: image,
+//   description: 'Karachi',
+//   scale: 10,
+//   region: roi,
+//   maxPixels: 1e13,
+// });
+
+
+// var roi2 = Chitral;
+// Map.addLayer(Chitral, {}, 'Chitral');
+

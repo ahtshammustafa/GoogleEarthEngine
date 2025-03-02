@@ -1,0 +1,55 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var kpk = ee.FeatureCollection("projects/ee-ahtshamm214/assets/District_Boundary"),
+    gaul2 = ee.FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level2");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+// Capital cities list
+// Function to apply cloud mask to Landsat 4, 5, 7
+var cities = [
+  'Bannu', 'Lakki Marwat', 'Dera Ismail Khan', 'Tank', 'Adam Khel',
+  'Bhittani', 'Abbottabad', 'Battagram', 'Haripur',
+  'Kohistan', 'Mansehra', 'Hangu', 'Karak', 'Kohat',
+  'Chitral', 'Dir', 'Malakand P.A.', 'Shangla', 'Swat',
+  'Buner', 'Mardan', 'Swabi', 'Charsadda', 'Nowshera',
+  'Peshawar', 'Bajaur', 'Khyber', 'Kurram', 'Largha Shirani',
+  'Mohmand', 'N. Waziristan', 'Orakzai', 'S. Waziristan'
+];
+
+
+var dataset = ee.ImageCollection('LANDSAT/LC08/C01/T1_8DAY_NDVI')
+  .filterDate('2017-01-01', '2017-12-31');
+
+// Iterate over cities and add NDVI layers
+cities.forEach(function (city) {
+  var roi = gaul2.filter(ee.Filter.eq('ADM2_NAME', city)).geometry();
+
+  // Filter the dataset for the specific city
+  var cityDataset = dataset.filterBounds(roi);
+
+  // Select the NDVI band
+  var cityNDVI = cityDataset.select('NDVI');
+
+  // Clip NDVI layer to the city boundary
+  var clippedNDVI = cityNDVI.mean().clip(roi);
+
+  // Add clipped NDVI layer to the map
+  Map.addLayer(clippedNDVI, {
+    min: 0,
+    max: 1,
+    palette: [
+      'ffffff', 'ce7e45', 'df923d', 'f1b555', 'fcd163', '99b718', '74a901',
+      '66a000', '529400', '3e8601', '207401', '056201', '004c00', '023b01',
+      '012e01', '011d01', '011301'
+    ],
+  }, 'NDVI ' + city);
+});
+
+// // Choose a specific city to center the map on
+// var centerCity = 'Peshawar District';
+
+// // Find the geometry of the selected city
+// var centerROIGeometry = gaul2.filter(ee.Filter.eq('ADM2_NAME', centerCity)).geometry();
+
+// // Check if the geometry is not empty before centering the map
+// if (centerROIGeometry) {
+//   Map.centerObject(centerROIGeometry);
+// }

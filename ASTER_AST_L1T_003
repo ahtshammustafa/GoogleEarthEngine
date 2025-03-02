@@ -1,0 +1,21 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var aoi = ee.FeatureCollection("projects/ee-ahtshamm214/assets/SampleLoc");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+var dataset = ee.ImageCollection('ASTER/AST_L1T_003')
+                  .filter(ee.Filter.date('2018-01-01', '2022-08-15'));
+var falseColor = dataset.select(['B3N', 'B02', 'B01']);
+var falseColorVis = {
+  min: 0.0,
+  max: 255.0,
+};
+
+// Define the map center based on the provided coordinates
+var center = ee.Geometry.Point(67.818333, 31.458019);
+
+// Set the map center and zoom level
+
+
+// Add the false color composite to the map
+Map.addLayer(falseColor.median(), falseColorVis, 'False Color');
+Map.addLayer(aoi, {}, 'Sample Locations')
+Map.centerObject(aoi, 12);

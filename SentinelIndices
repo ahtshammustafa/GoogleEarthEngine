@@ -1,0 +1,103 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var mzd = ee.FeatureCollection("projects/ee-ahtshamm214/assets/tehsilMzdBoundary");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+//ROI
+var roi = mzd;
+// Map.addLayer(roi);
+
+// Load Sentinel 2A image
+var image = ee.ImageCollection('COPERNICUS/S2_SR')
+.filterDate('2022-01-01', '2022-12-30')
+.filter(ee.Filter.calendarRange(5, 7, 'month'))
+// Pre-filter to get less cloudy granules.
+.filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 5))
+.filterBounds(roi)
+.median()
+.clip(roi);
+print(image);
+var visParamsTrue = {bands: ['B4', 'B3', 'B2'], min: 1250.46, max: 2664.54, gamma: 1.1};
+Map.addLayer(image, visParamsTrue, "Sentinel 2022");
+Map.centerObject(roi, 10);
+
+
+// Band Map to know which band is from calculation
+var bandMap = {
+  BLUE: image.select('B2'),
+  GREEN: image.select('B3'),
+  RED: image.select('B4'),
+  NIR: image.select('B8'),
+  SWIR1: image.select('B11'),
+  SWIR2: image.select('B12')
+};
+
+// Calculate Normalized Difference Vegetation Index
+var ndvi = image.expression('(NIR - RED) / (NIR + RED)', bandMap).rename('NDVI');
+Map.addLayer(ndvi, { min: -1, max: 1, palette: ['blue', 'white', 'green']}, 'NDVI');
+
+// Calculate Normalized Difference Water Index
+var ndwi = image.expression('(GREEN - SWIR1) / (GREEN + SWIR1)', bandMap).rename('NDWI');
+Map.addLayer(ndwi, { min: -1, max: 1, palette: ['red', 'white', 'blue']}, 'NDWI');
+
+// Calculate Normalized Difference Built-up Index
+var ndbi = image.expression('(SWIR1 - NIR) / (SWIR1 + NIR)', bandMap).rename('NDBI');
+Map.addLayer(ndbi, { min: -1, max: 1, palette: ['blue', 'white', 'red']}, 'NDBI');
+
+// Calculate the minimum and maximum NDVI values in the ROI
+var ndviStats = ndvi.reduceRegion({
+  reducer: ee.Reducer.minMax(),
+  geometry: roi,
+  scale: 10,
+  maxPixels: 1e13
+});
+
+// Calculate the minimum and maximum values for NDVI in the ROI
+var ndviStats = ndvi.reduceRegion({
+  reducer: ee.Reducer.minMax(),
+  geometry: roi,
+  scale: 10,
+  maxPixels: 1e13
+});
+
+// Calculate the minimum and maximum values for NDWI in the ROI
+var ndwiStats = ndwi.reduceRegion({
+  reducer: ee.Reducer.minMax(),
+  geometry: roi,
+  scale: 10,
+  maxPixels: 1e13
+});
+
+// Calculate the minimum and maximum values for NDBI in the ROI
+var ndbiStats = ndbi.reduceRegion({
+  reducer: ee.Reducer.minMax(),
+  geometry: roi,
+  scale: 10,
+  maxPixels: 1e13
+});
+
+// Print the minimum and maximum values for NDVI, NDWI, and NDBI
+print("NDVI Minimum:", ndviStats.get('NDVI_min'), "NDVI Maximum:", ndviStats.get('NDVI_max'));
+print("NDWI Minimum:", ndwiStats.get('NDWI_min'), "NDWI Maximum:", ndwiStats.get('NDWI_max'));
+print("NDBI Minimum:", ndbiStats.get('NDBI_min'), "NDBI Maximum:", ndbiStats.get('NDBI_max'));
+
+// List of index names and corresponding layers
+var indices = [
+  { name: 'NDVI2A', layer: ndvi },
+  { name: 'NDWI2A', layer: ndwi },
+  { name: 'NDBI2A', layer: ndbi },
+  
+];
+
+
+// Loop through the indices and export images
+for (var i = 0; i < indices.length; i++) {
+  var index = indices[i];
+  
+  // Export image
+  Export.image.toDrive({
+    image: index.layer.toFloat(), // Convert to float to avoid precision issues
+    description: index.name,
+    scale: 10, // Adjust the scale as needed
+    region: roi,
+    maxPixels: 1e13 // Adjust as needed
+  });
+}

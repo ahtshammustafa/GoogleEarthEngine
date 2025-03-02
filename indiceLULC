@@ -1,0 +1,158 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var s2 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED"),
+    roi = ee.FeatureCollection("projects/ee-ahtshamm214/assets/tehsilMzdBoundary");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
+Map.centerObject(roi, 11);
+
+// Cloud masking function
+function cloudMask(image){
+  var scl = image.select('SCL');
+  var mask = scl.eq(3).or(scl.gte(8).and(scl.lte(10))).eq(0);
+  return image.select(['B.*']).updateMask(mask);
+}
+
+// Composite an imagery
+var image = s2.filterBounds(roi).filterDate('2022-05-01', '2022-08-31')
+  .map(cloudMask)
+  .median().divide(10000).clip(roi);
+Map.addLayer(image, { min: [0.05, 0.1, 0], max: [0.3, 0.5, 0.2], bands: ['B11', 'B8', 'B4']}, 'Image');
+  
+// Band map for index calculation
+var bandMap = {
+  BLUE: image.select('B2'),
+  GREEN: image.select('B3'),
+  RED: image.select('B4'),
+  NIR: image.select('B8'),
+  SWIR1: image.select('B11'),
+  SWIR2: image.select('B12')
+};
+
+// MNDWI (Modified Normalized Difference Water Index)
+var mndwi = image.expression('(GREEN - SWIR1) / (GREEN + SWIR1)', bandMap).rename('MNDWI');
+Map.addLayer(mndwi, { min: -1, max: 1, palette: ['red', 'white', 'blue'] }, 'MNDWI', false);
+
+// EVI (Enhanced Vegetation Index)
+var evi = image.expression('(2.5 * (NIR - RED)) / (NIR + 6 * RED - 7.5 * BLUE + 1)', bandMap).rename('EVI');
+Map.addLayer(evi, { min: -1, max: 1, palette: ['blue', 'white', 'green'] }, 'EVI', false);
+
+// NDBI (Normamlized Difference Built-up Index)
+var ndbi = image.expression('(SWIR1 - NIR) / (SWIR1 + NIR)', bandMap).rename('NDBI');
+Map.addLayer(ndbi, { min: -1, max: 1, palette: ['blue', 'white', 'red'] }, 'NDBI', false);
+
+// NDBaI (Normamlized Difference Bareness Index)
+var ndbai = image.expression('(SWIR1 - SWIR2) / (SWIR1 + SWIR2)', bandMap).rename('NDBaI');
+Map.addLayer(ndbai, { min: -1, max: 1, palette: ['blue', 'white', 'red'] }, 'NDBaI', false);
+
+// NBR (Normamlized Burn Ratio)
+var nbr = image.expression('(NIR - SWIR2) / (NIR + SWIR2)', bandMap).rename('NBR');
+Map.addLayer(nbr, { min: -1, max: 1, palette: ['red', 'white', 'green'] }, 'NBR', false);
+
+// Land cover classification
+// Water
+var water = evi.lt(0);
+Map.addLayer(water.selfMask(), { palette: 'lightskyblue' }, 'Water', false);
+
+// Land
+var land = water.eq(0);
+Map.addLayer(land.selfMask(), { palette: 'tan' }, 'Land', false);
+
+// Wetland
+var wetland = land.and(mndwi.gte(-0.2));
+Map.addLayer(wetland.selfMask(), { palette: 'olive' }, 'Wetland', false);
+
+// Dryland
+var dryland = land.and(wetland.eq(0));
+Map.addLayer(dryland.selfMask(), { palette: 'chocolate' }, 'Dryland', false);
+
+// Vegetation
+var vegetation = land.and(nbr.gt(0.4));
+Map.addLayer(vegetation.selfMask(), { palette: 'green' }, 'Vegetation', false);
+
+// Dry vegetation
+var dryVegetation = dryland.and(vegetation);
+Map.addLayer(dryVegetation.selfMask(), { palette: 'limegreen' }, 'Dry vegetation', false);
+
+// Wet vegetation
+var wetVegetation = wetland.and(vegetation);
+Map.addLayer(wetVegetation.selfMask(), { palette: '3CB371' }, 'Wet vegetation', false);
+
+// Low vegetation
+var lowVegetation = vegetation.and(nbr.lt(0.6));
+Map.addLayer(lowVegetation.selfMask(), { palette: 'lightgreen' }, 'Low vegetation', false);
+
+// High vegetation
+var highVegetation = vegetation.and(nbr.gte(0.6));
+Map.addLayer(highVegetation.selfMask(), { palette: 'darkgreen' }, 'High vegetation', false);
+
+// Marsh
+var marsh = lowVegetation.and(wetland);
+Map.addLayer(marsh.selfMask(), { palette: 'yellowgreen' }, 'Marsh', false);
+
+// Swamp
+var swamp = highVegetation.and(wetland);
+Map.addLayer(swamp.selfMask(), { palette: 'olive' }, 'Swamp', false);
+
+// Shrub
+var shrub = lowVegetation.and(dryland);
+Map.addLayer(shrub.selfMask(), { palette: 'lightgreen' }, 'Shrub', false);
+
+// Forest
+var forest = highVegetation.and(dryland);
+Map.addLayer(forest.selfMask(), { palette: 'darkgreen' }, 'Forest', false);
+
+// Built-up
+var builtup = land.and(ndbi.gt(-0.15)).and(ndbai.lte(0.15));
+Map.addLayer(builtup.selfMask(), { palette: 'lightcoral' }, 'Built-up', false);
+
+// Bare
+var bare = land.and(builtup.eq(0)).and(vegetation.eq(0));
+Map.addLayer(bare.selfMask(), { palette: 'tan' }, 'Bare', false);
+
+// Dry bareland
+var dryBareland = dryland.and(bare);
+Map.addLayer(dryBareland.selfMask(), { palette: 'tan' }, 'Dry bareland', false);
+
+// Wet bareland
+var wetBareland = wetland.and(bare);
+Map.addLayer(wetBareland.selfMask(), { palette: 'teal' }, 'Wet bareland', false);
+
+// Land cover matching
+// Visual
+var vis = {
+  'lc_class_values': [11, 12, 21, 22, 30, 41, 42, 50],
+  'lc_class_names': ['Natural/Plantation forest', 'Shrub/Crop', 'Swamp', 'Marsh/ricefield', 'Built-up', 'Dry bareland', 'Wet bareland', 'Water'],
+  'lc_class_palette': ['228B22', '90EE90', '808000', '9ACD32', 'F08080', 'D2B48C', '008080', '87CEFA']
+};
+
+// Land cover
+var landcover = ee.Image(0).where(forest.eq(1), 11)
+  .where(shrub.eq(1), 12)
+  .where(swamp.eq(1), 21)
+  .where(marsh.eq(1), 22)
+  .where(builtup.eq(1), 30)
+  .where(dryBareland.eq(1), 41)
+  .where(wetBareland.eq(1), 42)
+  .where(water.eq(1), 50)
+  .rename('lc')
+  .set(vis)
+  .clip(roi);
+
+// Show the land cover
+Map.addLayer(landcover, {}, 'Land cover');
+
+// Show legend
+var panel = ui.Panel([ui.Label('Legend')], ui.Panel.Layout.flow('vertical'), { position: 'bottom-left' });
+Map.add(panel);
+
+vis.lc_class_values.map(function(value, index){
+  panel.add(
+    ui.Panel(
+      [
+        ui.Label('', { backgroundColor: vis.lc_class_palette[index], height: '20px', width: '30px' }),
+        ui.Label(value, { height: '20px' }),
+        ui.Label(vis.lc_class_names[index], { height: '20px' }),
+      ],
+      ui.Panel.Layout.flow('horizontal')
+    )
+  );
+});
